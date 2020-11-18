@@ -1,0 +1,1467 @@
+<!DOCTYPE html>
+<html lang="" xml:lang="">
+  <head>
+    <title>Workshop</title>
+    <meta charset="utf-8" />
+    <meta name="author" content="Øystein Sørensen" />
+    <script src="libs/header-attrs-2.5/header-attrs.js"></script>
+    <link href="libs/remark-css-0.0.1/default.css" rel="stylesheet" />
+    <link rel="stylesheet" href="lcbc-uio.css" type="text/css" />
+    <link rel="stylesheet" href="lcbc-uio-fonts.css" type="text/css" />
+  </head>
+  <body>
+    <textarea id="source">
+class: middle, right, title-slide
+
+# Workshop
+## Generalized Additive Mixed Models
+### Øystein Sørensen
+### 19/11/2020
+
+---
+
+
+layout: true
+    
+&lt;div class="my-sidebar"&gt;&lt;/div&gt; 
+
+
+
+
+
+
+
+
+---
+
+# Packages we need
+
+
+```r
+library(tidyverse)
+library(mgcv)
+library(gamm4)
+library(gratia)
+library(broom)
+```
+
+
+
+
+
+
+
+---
+
+# Simulated example data
+
+
+```r
+dat %&gt;% 
+  select(id, age, sex, icv, genotype, education, hippocampus) %&gt;% 
+  head(6)
+```
+
+```
+## # A tibble: 6 x 7
+##      id   age sex         icv genotype education hippocampus
+##   &lt;int&gt; &lt;dbl&gt; &lt;chr&gt;     &lt;dbl&gt; &lt;chr&gt;        &lt;dbl&gt;       &lt;dbl&gt;
+## 1     1 21.1  Female 1461915. A             19.8       7877.
+## 2     1 23.6  Female 1461915. A             19.8       7948.
+## 3     2  5.47 Female 1322501. A             18.3       7536.
+## 4     2  7.17 Female 1322501. A             18.3       7470.
+## 5     2  9.67 Female 1322501. A             18.3       7757.
+## 6     2 11.0  Female 1322501. A             18.3       8229.
+```
+
+---
+
+# Nonlinear relationships
+
+
+```r
+ggplot(dat, aes(x = age, y = hippocampus, group = id)) +
+  geom_point(size = .6) +
+  geom_line()
+```
+
+&lt;img src="Workshop1_files/figure-html/unnamed-chunk-5-1.png" style="display: block; margin: auto;" /&gt;
+
+---
+
+# Linear regression models not so good
+
+&lt;center&gt;
+&lt;img src="figures/gamm_vs_polynomials.png" height="400" width="600"&gt;
+&lt;/center&gt;
+
+Figure from Sørensen et al. (2020), https://doi.org/10.1016/j.neuroimage.2020.117416.
+
+
+---
+
+# Typical questions
+
+Do the trajectories differ with respect to a categorical variable?
+
+&lt;img src="Workshop1_files/figure-html/genotype-plot-1.png" style="display: block; margin: auto;" /&gt;
+
+---
+
+# Typical questions
+
+Do the trajectories differ with respect to a continuous variable?
+
+&lt;img src="Workshop1_files/figure-html/edu-plot-1.png" style="display: block; margin: auto;" /&gt;
+
+---
+
+# Plan for today
+
+- What are GAMMs?
+
+- GAMMs in R
+
+Short break
+
+- How do we set up interactions?
+
+- How do we avoid overfitting?
+
+---
+class: middle, center
+
+# What are GAMMs?
+
+---
+
+# Generalized additive models
+
+.pull-left[
+- Performs (generalized) linear regression using basis functions of different shapes:
+
+`$$y = \beta_{1} b_{1}(x) + \beta_{2} b_{2}(x) + \beta_{3} b_{3}(x) + \beta_{4} b_{4}(x) + \beta_{5} b_{5}(x) + \epsilon$$`
+- Much more flexible than linear regression with quadratic terms:
+
+`$$y = \beta_{0} + \beta_{1}x + \beta_{2}x^{2} + \epsilon$$`
+
+Key references: Hastie and Tibshirani, 1986 (https://doi.org/10.1214/ss/1177013604), Hastie and Tibshirani, 1987 (https://doi.org/10.1080/01621459.1987.10478440).
+]
+.pull-right[
+&lt;img src="Workshop1_files/figure-html/unnamed-chunk-6-1.png" style="display: block; margin: auto;" /&gt;
+
+]
+
+
+---
+
+# Constant
+
+
+
+
+
+`$$\beta = (0, 0, 0, 1, 0)'$$`
+
+&lt;img src="Workshop1_files/figure-html/unnamed-chunk-8-1.png" style="display: block; margin: auto;" /&gt;
+
+
+---
+
+# Linear
+
+`$$\beta = (0, 0, 0, 1.2, 0.3)'$$`
+
+&lt;img src="Workshop1_files/figure-html/unnamed-chunk-9-1.png" style="display: block; margin: auto;" /&gt;
+
+
+---
+
+# Pretty nonlinear
+
+`$$\beta = (-0.679, -0.486, -0.821, 1.382, 0.86)'$$`
+
+&lt;img src="Workshop1_files/figure-html/unnamed-chunk-10-1.png" style="display: block; margin: auto;" /&gt;
+
+---
+
+# Pretty nonlinear
+
+`$$\beta = (1.556, 1.001, 0.355, -0.818, -0.429)'$$`
+
+&lt;img src="Workshop1_files/figure-html/unnamed-chunk-11-1.png" style="display: block; margin: auto;" /&gt;
+
+---
+
+# Pretty nonlinear
+
+`$$\beta = (-100, -100, 100, 0, 0)'$$`
+
+&lt;img src="Workshop1_files/figure-html/unnamed-chunk-12-1.png" style="display: block; margin: auto;" /&gt;
+
+---
+
+# The main idea of GAMMs
+
+- Learn the model - not only the parameters - from data.
+
+--
+
+- In contrast to nonlinear models where the parameters have a well defined meaning, e.g., the Hodgkin-Huxley potential.
+
+&lt;center&gt;
+&lt;img src="figures/hodgkin_huxley_potential.webp"&gt;
+&lt;/center&gt;
+
+Image from Häusser (2000), https://doi.org/10.1038/81426
+
+---
+
+# Generalized additive mixed models
+
+- Typical LCBC data has repeated measurements of the same participants.
+
+- GAMM
+
+  - Use random effects to take into account the correlation structure, just like in linear mixed models.
+
+- GAM
+
+  - No random effects, so what you would use with cross-sectional data.
+  
+  
+---
+
+# How smooth or wiggly?
+
+.pull-left[
+
+- How do I know how many basis functions to use?
+
+`$$y = \beta_{1} b_{1}(x) + \beta_{2} b_{2}(x) + \dots + \beta_{K} b_{K}(x) + \epsilon$$`
+- Too smooth or too wiggly?
+
+- Could try lots of different `\(K\)`s, but:
+  
+  - When `\(K\)` gets small, the available functional forms gets quite restricted.
+  
+  - The actual form of the `\(b_{k}(x)\)` starts to matter ("knot placement").
+  
+  - And `\(p\)`-values don't know that you tried lots of different `\(K\)`s.
+
+]
+.pull-right[
+&lt;img src="Workshop1_files/figure-html/unnamed-chunk-13-1.png" style="display: block; margin: auto;" /&gt;
+]
+
+
+---
+
+# Second derivative smoothing
+
+.pull-left[
+
+- More flexible approach: make sure `\(K\)` is large enough, and penalize wiggliness.
+
+- Define smoothness in terms of squared second derivative.
+
+`$$\int f''(x)^2 \text{d}x,$$`
+`\(f(x) = \beta_{1} b_{1}(x) + \beta_{2} b_{2}(x) + \dots + \beta_{K} b_{K}(x)\)`.
+
+- Find parameters `\(\beta\)` minimizing
+
+`$$\sum \left(y - f(x) \right)^2 + \lambda \int f''(x)^2 \text{d}x$$`
+- Smoothing parameter `\(\lambda\)` can (in principle) be found by cross-validation.
+
+]
+.pull-right[
+
+
+
+&lt;img src="Workshop1_files/figure-html/unnamed-chunk-15-1.png" style="display: block; margin: auto;" /&gt;
+
+]
+
+---
+
+# Second derivative smoothing
+
+
+
+
+- With second derivative smoothing, the number of basis functions no longer matters, as long as it's large enough.
+
+&lt;img src="Workshop1_files/figure-html/unnamed-chunk-17-1.png" style="display: block; margin: auto;" /&gt;
+
+---
+
+class: middle, center
+
+# GAMMs in R
+
+---
+
+# Packages
+
+
+
+
+```r
+library(mgcv)
+```
+
+- Very comprehensive.
+
+
+
+```r
+library(gamm4)
+```
+
+- Sometimes better for fitting GAMMs.
+
+---
+
+# Hippocampus trajectory
+
+
+&lt;img src="Workshop1_files/figure-html/unnamed-chunk-20-1.png" style="display: block; margin: auto;" /&gt;
+
+
+
+```r
+mod &lt;- gamm4(
+  formula = hippocampus ~ s(age) + icv + sex, # formula for GAM
+  random = ~(1 | id), # random intercept for each participant (ID)
+  data = dat
+)
+```
+
+---
+
+# Hippocampus trajectory
+
+
+```r
+mod &lt;- gamm4(
+  formula = hippocampus ~ s(age, k = 15) + icv + sex, # formula for GAM
+  random = ~(1 | id), # random intercept for each participant (ID)
+  data = dat
+)
+```
+
+```
+## Warning: Some predictor variables are on very different scales: consider
+## rescaling
+```
+
+--
+
+
+```r
+range(dat$age)
+```
+
+```
+## [1]  4.125941 97.103973
+```
+
+```r
+range(dat$icv)
+```
+
+```
+## [1] 1149564 2223973
+```
+
+
+---
+
+# Hippocampus trajectory
+
+
+- Scale to mean 0 and standard deviation 1:
+
+
+```r
+dat$age_z &lt;- (dat$age - mean(dat$age)) / sd(dat$age)
+dat$icv_z &lt;- (dat$icv - mean(dat$icv)) / sd(dat$icv)
+```
+
+
+
+```r
+range(dat$age_z)
+```
+
+```
+## [1] -1.281531  2.427487
+```
+
+```r
+range(dat$icv_z)
+```
+
+```
+## [1] -2.646010  3.993066
+```
+
+---
+
+# Hippocampus trajectory
+
+- Try again
+
+
+```r
+mod &lt;- gamm4(
+  formula = hippocampus ~ s(age_z, k = 15) + icv_z + sex, # formula for GAM
+  random = ~(1 | id), # random intercept for each participant (ID)
+  data = dat
+)
+```
+
+- We get two things back
+
+
+```r
+str(mod, max.level = 1)
+```
+
+```
+## List of 2
+##  $ mer:Formal class 'lmerMod' [package "lme4"] with 13 slots
+##  $ gam:List of 32
+##   ..- attr(*, "class")= chr "gam"
+```
+
+---
+
+
+
+```r
+summary(mod$gam)
+```
+
+```
+## 
+## Family: gaussian 
+## Link function: identity 
+## 
+## Formula:
+## hippocampus ~ s(age_z, k = 15) + icv_z + sex
+## 
+## Parametric coefficients:
+##             Estimate Std. Error t value Pr(&gt;|t|)    
+## (Intercept)  8001.73      21.21  377.24   &lt;2e-16 ***
+## icv_z         169.95      14.75   11.53   &lt;2e-16 ***
+## sexMale       439.83      30.02   14.65   &lt;2e-16 ***
+## ---
+## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+## 
+## Approximate significance of smooth terms:
+##            edf Ref.df     F p-value    
+## s(age_z) 12.81  12.81 242.5  &lt;2e-16 ***
+## ---
+## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+## 
+## R-sq.(adj) =  0.392   
+## lmer.REML =  50685  Scale est. = 22670     n = 3409
+```
+
+---
+
+# Visualization
+
+.pull-left[
+- `gratia` gives ggplot-style output:
+
+
+```r
+library(gratia)
+draw(mod$gam, parametric = FALSE)
+```
+
+&lt;img src="Workshop1_files/figure-html/unnamed-chunk-29-1.png" style="display: block; margin: auto;" /&gt;
+]
+.pull-right[
+- But `mgcv` also has plotting function:
+
+
+```r
+par(cex=1.5)
+plot(mod$gam, scheme = 1)
+```
+
+&lt;img src="Workshop1_files/figure-html/unnamed-chunk-30-1.png" style="display: block; margin: auto;" /&gt;
+
+]
+
+
+
+---
+
+# Enough basis functions?
+
+- Our model used `k=15`. 
+
+- Try `k=4`:
+
+
+```r
+mod0 &lt;- gamm4(
+  formula = hippocampus ~ s(age_z, k = 4) + icv_z + sex, # formula for GAM
+  random = ~(1 | id), # random intercept for each participant (ID)
+  data = dat
+)
+```
+
+---
+
+# K-index
+
+- Permutation test:
+
+
+```r
+k.check(mod$gam)
+```
+
+```
+##          k'      edf   k-index p-value
+## s(age_z) 14 12.80557 0.9933296  0.3925
+```
+
+```r
+k.check(mod0$gam)
+```
+
+```
+##          k'     edf   k-index p-value
+## s(age_z)  3 2.99288 0.9002189       0
+```
+
+- Evidence that `\(K\)` is too low:
+
+  - `k-index` below 1
+  - `p-value` close to 0
+  - `edf` close to `k'`
+
+See `?k.check`. Citation: Wood (2017, Chapter 5.9). (https://www.routledge.com/Generalized-Additive-Models-An-Introduction-with-R-Second-Edition/Wood/p/book/9781498728331)
+
+---
+
+# Confidence intervals
+
+- For parametric terms, everything works as usual:
+
+
+```r
+library(broom)
+tidy(mod$gam, parametric = TRUE, conf.int = TRUE, conf.level = 0.95)
+```
+
+```
+## # A tibble: 3 x 7
+##   term        estimate std.error statistic  p.value conf.low conf.high
+##   &lt;chr&gt;          &lt;dbl&gt;     &lt;dbl&gt;     &lt;dbl&gt;    &lt;dbl&gt;    &lt;dbl&gt;     &lt;dbl&gt;
+## 1 (Intercept)    8002.      21.2     377.  0.          7960.     8043.
+## 2 icv_z           170.      14.7      11.5 3.58e-30     141.      199.
+## 3 sexMale         440.      30.0      14.7 3.47e-47     381.      499.
+```
+
+- Can also get some summaries for smooth term:
+
+
+```r
+tidy(mod$gam, parametric = FALSE)
+```
+
+```
+## # A tibble: 1 x 5
+##   term       edf ref.df statistic p.value
+##   &lt;chr&gt;    &lt;dbl&gt;  &lt;dbl&gt;     &lt;dbl&gt;   &lt;dbl&gt;
+## 1 s(age_z)  12.8   12.8      242.       0
+```
+
+---
+
+# Confidence intervals for smooth terms
+
+- Create new set of values over which to plot:
+
+
+```r
+grid &lt;- crossing(
+  age = seq(from = 4, to = 95, by = 1),
+  sex = c("Female", "Male"), icv_z = 0
+) %&gt;% 
+  mutate(age_z = (age - mean(dat$age)) / sd(dat$age))
+```
+
+- Compute predictions at those values:
+
+
+```r
+predictions &lt;- predict(mod$gam, newdata = grid, se.fit = TRUE)
+str(predictions)
+```
+
+```
+## List of 2
+##  $ fit   : num [1:184(1d)] 7439 7879 7599 8039 7757 ...
+##   ..- attr(*, "dimnames")=List of 1
+##   .. ..$ : chr [1:184] "1" "2" "3" "4" ...
+##  $ se.fit: num [1:184(1d)] 28.6 28.7 27.7 27.8 27.9 ...
+##   ..- attr(*, "dimnames")=List of 1
+##   .. ..$ : chr [1:184] "1" "2" "3" "4" ...
+```
+
+---
+
+# Confidence intervals for smooth terms
+
+.pull-left[
+- Put predictions in grid and plot
+
+
+```r
+grid &lt;- grid %&gt;% 
+  mutate(
+    pred = predictions$fit,
+    se = predictions$se.fit,
+    pred_lower = pred - 1.96 * se,
+    pred_upper = pred + 1.96 * se
+  )
+```
+
+
+```r
+ggplot(grid, aes(
+  x = age, y = pred, group = sex,
+  ymin = pred_lower, ymax = pred_upper)) + 
+  geom_line(aes(color = sex)) +
+  geom_ribbon(aes(fill = sex), alpha = .4) +
+  ylab("Hippocampal volume") + 
+  xlab("Age") +
+  labs(color = NULL, fill = NULL)
+```
+]
+--
+
+.pull-right[
+
+&lt;img src="Workshop1_files/figure-html/ci-plot-out-1.png" style="display: block; margin: auto;" /&gt;
+
+]
+
+---
+
+# There's always a catch
+
+
+.pull-left[
+
+- We did `\(\hat{f} \pm 1.96 \hat{\sigma}\)`
+
+  - This is a *pointwise* confidence interval
+
+  - Gives 95 % confidence along the x-axis!
+
+  - We are not "95 % sure" that the true function lies within the confidence bands.
+
+
+
+Marra and Wood (2012), https://doi.org/10.1111/j.1467-9469.2011.00760.x
+]
+.pull-right[
+&lt;img src="Workshop1_files/figure-html/ci-plot-out-1.png" style="display: block; margin: auto;" /&gt;
+]
+
+---
+
+# Simultaneous confidence intervals
+
+.pull-left[
+
+- Need something bigger than 1.96.
+
+- `gratia` can help us
+
+
+```r
+crit &lt;- confint(mod$gam, parm = "s(age_z)", 
+        type = "simultaneous") %&gt;% 
+  distinct(crit) %&gt;% 
+  pull()
+
+crit
+```
+
+```
+##      95% 
+## 2.731852
+```
+
+
+```r
+grid &lt;- grid %&gt;% 
+  mutate(
+    pred_lower_sim = pred - crit * se,
+    pred_upper_sim = pred + crit * se
+  )
+```
+
+
+]
+.pull-right[
+
+- `sex = "Female"`. The outer bands are simultaneous CIs.
+
+&lt;img src="Workshop1_files/figure-html/sim-ci-plot-1.png" style="display: block; margin: auto;" /&gt;
+
+]
+
+
+---
+
+class: middle, center
+
+# Short break
+
+---
+
+class: middle, center
+
+# Interactions
+
+---
+
+# Interactions
+
+.pull-left[
+
+- How does the curve vary with
+
+  - Categorical variables?
+  
+  - Continuous variables?
+
+]
+.pull-right[
+
+&lt;img src="Workshop1_files/figure-html/unnamed-chunk-40-1.png" style="display: block; margin: auto;" /&gt;
+
+]
+
+---
+
+# Interaction with categorical variables
+
+
+&lt;img src="Workshop1_files/figure-html/unnamed-chunk-41-1.png" style="display: block; margin: auto;" /&gt;
+
+
+---
+
+# Data preparation
+
+- Need `factor`s or `ordered.factor`s:
+
+
+```r
+dat$genotype_fct &lt;- factor(dat$genotype)
+dat$genotype_ord &lt;- ordered(dat$genotype)
+
+table(dat$genotype_fct)
+```
+
+```
+## 
+##    A    B    C 
+## 1738 1315  356
+```
+
+```r
+class(dat$genotype_fct)
+```
+
+```
+## [1] "factor"
+```
+
+```r
+class(dat$genotype_ord)
+```
+
+```
+## [1] "ordered" "factor"
+```
+
+---
+
+# Factor by-variable
+
+- Try with `factor` first:
+
+
+```r
+mod_fac &lt;- gamm4(
+  formula = hippocampus ~ s(age_z, by = genotype_fct) + 
+    genotype_fct + sex + icv_z,
+  random = ~(1 | id), data = dat
+)
+```
+
+- One smooth per factor level:
+
+
+```r
+tidy(mod_fac$gam)
+```
+
+```
+## # A tibble: 3 x 5
+##   term                     edf ref.df statistic p.value
+##   &lt;chr&gt;                  &lt;dbl&gt;  &lt;dbl&gt;     &lt;dbl&gt;   &lt;dbl&gt;
+## 1 s(age_z):genotype_fctA  8.60   8.60     188.        0
+## 2 s(age_z):genotype_fctB  8.51   8.51     130.        0
+## 3 s(age_z):genotype_fctC  7.50   7.50      48.3       0
+```
+
+---
+
+# Factor by-variable
+
+
+```r
+grid &lt;- crossing(
+  age = seq(from = 4, to = 95, by = 1),
+  genotype_fct = c("A", "B", "C"), sex = "Female", icv_z = 0
+) %&gt;% 
+  mutate(age_z = (age - mean(dat$age)) / sd(dat$age), genotype_ord = genotype_fct)
+
+grid$fit &lt;- predict(mod_fac$gam, newdata = grid)
+```
+
+&lt;img src="Workshop1_files/figure-html/unnamed-chunk-46-1.png" style="display: block; margin: auto;" /&gt;
+
+---
+
+# Ordered factor by-variable
+
+- If we believe the trajectories are somewhat similar, the `factor` approach wastes power, since it estimates all of them completely independently.
+
+- We can use `ordered.factor` instead (note the addition of `s(age_z)`):
+
+
+```r
+mod_ord &lt;- gamm4(
+  formula = hippocampus ~ s(age_z) + s(age_z, by = genotype_ord) + 
+    genotype_ord + sex + icv_z,
+  random = ~(1 | id), data = dat
+)
+```
+
+--
+
+- Main effect, plus deviations from main effect for levels B and C:
+
+
+```r
+tidy(mod_ord$gam)
+```
+
+```
+## # A tibble: 3 x 5
+##   term                     edf ref.df statistic p.value
+##   &lt;chr&gt;                  &lt;dbl&gt;  &lt;dbl&gt;     &lt;dbl&gt;   &lt;dbl&gt;
+## 1 s(age_z)                8.79   8.79   347.      0    
+## 2 s(age_z):genotype_ordB  1.00   1.00     2.10    0.148
+## 3 s(age_z):genotype_ordC  1.     1.       0.165   0.685
+```
+
+---
+
+# Ordered factor by-variable
+
+- Strange confidence intervals!
+
+
+```r
+par(mfrow = c(1, 3), cex = 1.3)
+for(i in 1:3) plot(mod_ord$gam, scale = 0, select = i, scheme = 1)
+```
+
+&lt;img src="Workshop1_files/figure-html/unnamed-chunk-49-1.png" style="display: block; margin: auto;" /&gt;
+
+
+---
+
+# Ordered factor by-variable
+
+- Can be fixed!
+
+
+```r
+par(mfrow = c(1, 3), cex = 1.3)
+for(i in 1:3) plot(mod_ord$gam, scale = 0, select = i, scheme = 1, seWithMean = TRUE)
+```
+
+&lt;img src="Workshop1_files/figure-html/unnamed-chunk-50-1.png" style="display: block; margin: auto;" /&gt;
+
+
+---
+
+# Can still visualize
+
+
+
+```r
+grid$fit_ord &lt;- predict(mod_ord$gam, newdata = grid)
+```
+
+
+```r
+ggplot(grid, aes(x = age, y = fit_ord, group = genotype_ord, color = genotype_ord)) + 
+  geom_line() + 
+  labs(color = "genotype") +
+  ylab("hippocampal volume")
+```
+
+&lt;img src="Workshop1_files/figure-html/unnamed-chunk-52-1.png" style="display: block; margin: auto;" /&gt;
+
+---
+
+# Linear model analogy
+
+- Model with `factor` by-variable is like:
+
+
+```r
+lm(hippocampus ~ genotype + genotype : age_z, data = dat) %&gt;% coef()
+```
+
+```
+##     (Intercept)       genotypeB       genotypeC genotypeA:age_z genotypeB:age_z 
+##      8217.95989       -66.61367      -245.62945      -154.53125      -230.91555 
+## genotypeC:age_z 
+##      -242.29399
+```
+
+--
+
+
+- Model with `ordered.factor` by-variable is like:
+
+
+```r
+lm(hippocampus ~ genotype * age_z, data = dat) %&gt;% coef()
+```
+
+```
+##     (Intercept)       genotypeB       genotypeC           age_z genotypeB:age_z 
+##      8217.95989       -66.61367      -245.62945      -154.53125       -76.38430 
+## genotypeC:age_z 
+##       -87.76273
+```
+
+- Linear models identical, GAMMs are not.
+
+---
+
+# Summary - interaction with categorical variables
+
+- You typically want `grp` to be an `ordered.factor`.
+
+- Set up with `s(x) + grp + s(x, by = grp)`.
+
+---
+
+# Interaction with continuous variables
+
+&lt;img src="Workshop1_files/figure-html/unnamed-chunk-55-1.png" style="display: block; margin: auto;" /&gt;
+
+---
+
+# Take a look
+
+- Where is it nonlinear?
+
+&lt;img src="Workshop1_files/figure-html/unnamed-chunk-56-1.png" style="display: block; margin: auto;" /&gt;
+
+---
+
+# Interaction
+
+| Type | Formula | Works with |
+| ---- | ---- | ---- |
+| Linear in both | `hippocampus ~ age * edu` | `gamm()`, `gamm4()` |
+| Linear in `edu`, smooth in `age` | `hippocampus ~ s(age) + s(age, by = edu)` | `gamm()`, `gamm4()` |
+| Linear in `agee`, smooth in `edu` | `hippocampus ~ s(edu) + s(edu, by = age)` | `gamm()`, `gamm4()` |
+| Smooth in both | `hippocampus ~ te(age, edu)` | `gamm()` |
+| Smooth in both | `hippocampus ~ s(age) + s(edu) + ti(age, edu)` | `gamm()`|
+| Smooth in both | `hippocampus ~ t2(age, edu)` | `gamm()`, `gamm4()` |
+
+---
+
+# Linear in both
+
+
+
+```r
+mod &lt;- gamm4(
+  formula = hippocampus ~ age_z * education_z + icv_z + sex, 
+  random = ~(1|id), data = dat
+)
+```
+
+
+```r
+tidy(mod$gam, parametric = TRUE)
+```
+
+```
+## # A tibble: 6 x 5
+##   term              estimate std.error statistic  p.value
+##   &lt;chr&gt;                &lt;dbl&gt;     &lt;dbl&gt;     &lt;dbl&gt;    &lt;dbl&gt;
+## 1 (Intercept)        7967.        25.8   308.    0.      
+## 2 age_z              -114.        19.3    -5.93  3.25e- 9
+## 3 education_z          28.8       18.4     1.57  1.18e- 1
+## 4 icv_z               172.        17.6     9.76  3.16e-22
+## 5 sexMale             427.        35.9    11.9   3.98e-32
+## 6 age_z:education_z     6.42      19.0     0.338 7.36e- 1
+```
+
+---
+
+# Linear in both
+
+
+```r
+vis.gam(mod$gam, theta = 30, view = c("age_z", "education_z"))
+```
+
+&lt;img src="Workshop1_files/figure-html/unnamed-chunk-59-1.png" style="display: block; margin: auto;" /&gt;
+
+
+---
+
+# Smooth in age, linear in education
+
+- Note, no separate `education_z` term.
+
+
+```r
+mod &lt;- gamm4(
+  formula = hippocampus ~ s(age_z) + s(age_z, by = education_z) + icv_z + sex, 
+  random = ~(1|id), data = dat
+)
+```
+
+
+```r
+tidy(mod$gam, parametric = FALSE)
+```
+
+```
+## # A tibble: 2 x 5
+##   term                   edf ref.df statistic p.value
+##   &lt;chr&gt;                &lt;dbl&gt;  &lt;dbl&gt;     &lt;dbl&gt;   &lt;dbl&gt;
+## 1 s(age_z)              8.79   8.79    350.     0    
+## 2 s(age_z):education_z  2.     2.        1.29   0.276
+```
+
+---
+
+# Smooth in age, linear in education
+
+
+```r
+vis.gam(mod$gam, theta = 30, view = c("age_z", "education_z"))
+```
+
+&lt;img src="Workshop1_files/figure-html/unnamed-chunk-62-1.png" style="display: block; margin: auto;" /&gt;
+
+---
+
+# Smooth in age, linear in education
+
+- Varying-coefficient model: `s(age) + s(age, by = edu)` means `\(f(age) + \beta(age) * edu\)`.
+
+Hastie and Tibshirani (1993), https://doi.org/10.1111/j.2517-6161.1993.tb01939.x
+
+
+```r
+par(mfrow = c(1, 2), cex = 1.5)
+for(i in 1:2) plot(mod$gam, select = i, scale = 0, scheme = 1, seWithMean = TRUE)
+```
+
+&lt;img src="Workshop1_files/figure-html/unnamed-chunk-63-1.png" style="display: block; margin: auto;" /&gt;
+
+---
+
+# Smooth in both
+
+- Can use `t2()`, or `te()`, which are almost equivalent from a practical perspective.
+
+
+```r
+mod &lt;- gamm4(
+  formula = hippocampus ~ t2(age_z, education_z, k = c(15, 5)) + icv_z + sex, 
+  random = ~(1|id), data = dat
+)
+```
+
+
+```r
+tidy(mod$gam, parametric = FALSE)
+```
+
+```
+## # A tibble: 1 x 5
+##   term                    edf ref.df statistic p.value
+##   &lt;chr&gt;                 &lt;dbl&gt;  &lt;dbl&gt;     &lt;dbl&gt;   &lt;dbl&gt;
+## 1 t2(age_z,education_z)  22.1   22.1      40.7       0
+```
+
+
+---
+
+# Smooth in both
+
+
+```r
+vis.gam(mod$gam, theta = 30, view = c("age_z", "education_z"))
+```
+
+&lt;img src="Workshop1_files/figure-html/unnamed-chunk-66-1.png" style="display: block; margin: auto;" /&gt;
+
+---
+
+# But I want to see the interaction term!
+
+- Use `ti()`, and `gamm()` instead of `gamm4()`
+
+
+```r
+mod &lt;- gamm(
+  formula = hippocampus ~ s(age_z, k = 15) + s(education_z, k = 5) + 
+    ti(age_z, education_z, k = c(5, 5), bs = "tp") + icv_z + sex, 
+  random = list(id =~ 1), data = dat
+)
+```
+
+
+```r
+tidy(mod$gam, parametric = FALSE)
+```
+
+```
+## # A tibble: 3 x 5
+##   term                    edf ref.df statistic p.value
+##   &lt;chr&gt;                 &lt;dbl&gt;  &lt;dbl&gt;     &lt;dbl&gt;   &lt;dbl&gt;
+## 1 s(age_z)              12.8   12.8    243.      0    
+## 2 ti(education_z)        1.00   1.00     1.97    0.161
+## 3 ti(age_z,education_z)  1.35   1.35     0.843   0.520
+```
+
+
+---
+
+# Interaction terms
+
+
+```r
+par(mfrow = c(1, 3), cex = 1.3)
+for(i in 1:3) plot(mod$gam, scale = 0, select = i, seWithMean = TRUE, scheme = 1)
+```
+
+&lt;img src="Workshop1_files/figure-html/unnamed-chunk-69-1.png" style="display: block; margin: auto;" /&gt;
+
+---
+
+class: middle, center
+
+# How do we avoid overfitting?
+
+---
+
+# What is overfitting?
+
+
+
+
+
+
+
+
+
+
+
+&lt;img src="Workshop1_files/figure-html/unnamed-chunk-72-1.png" style="display: block; margin: auto;" /&gt;
+
+
+---
+# The long-run perspective
+
+- Fundamental assumption
+
+  - Our data is a random *sample* from a *population*.
+
+- Remember
+
+  - P-values do not tell us whether effects are real. They tell us how frequently effects of the observed size or bigger are expected to happen under repeated random sampling from the population.
+
+--
+
+- Similarly
+
+  - For a single sample (our data), we cannot compare two models and say that one is overfit and another is not. We must instead resort to procedures which strike the right balance between over- and underfitting under repeated random sampling.
+  
+For details: Hastie, Tibshirani, Freedman, 2009. Elements of Statistical Learning, Chapter 7 (https://web.stanford.edu/~hastie/ElemStatLearn/).
+
+---
+# Bias and variance
+
+.pull-left[
+
+- We deal with overfitting by minimizing expected mean squared error:
+
+`$$\text{MSE} = \text{Bias}^{2} + \text{Variance}$$`
+- Overfitted models have low bias and high variance
+
+  - Differ a lot between samples, but on average correct.
+  
+- Underfitted models have high bias and low variance
+
+  - Differ little between samples, but on average wrong.
+
+]
+.pull-right[
+
+- Fits for 100 random samples:
+
+&lt;img src="Workshop1_files/figure-html/unnamed-chunk-73-1.png" style="display: block; margin: auto;" /&gt;
+
+]
+
+---
+
+# Bias-variance tradeoff
+
+&lt;center&gt;
+&lt;img src="figures/bias-variance-tradeoff.png"&gt;
+&lt;/center&gt;
+
+Figure from https://djsaunde.wordpress.com/2017/07/17/the-bias-variance-tradeoff/.
+
+
+---
+
+# In terms of GAMs and GAMMs
+
+- Given a smoothing parameter `\(\lambda\)`, we minimize
+
+`$$\sum \left(y - f(x) \right)^2 + \lambda \int f''(x)^2 \text{d}x$$`
+- What is the optimal value of `\(\lambda\)`?
+
+---
+
+# Methods for finding the right balance
+
+
+- Cross-validation
+
+  - `gam()` uses generalized cross-validation by default (`method = "GCV.Cp"`). More conservative double cross-validation obtained with (`gamma = 1.5`).
+  
+  - Cross-validation does not make sense with repeated measurements, unless you really know what you're doing.
+  
+- Marginal and restricted maximum likelihood (ML/REML)
+
+  - Default with GAMMs.
+
+  - Less variable than cross-validation, so a good option also for `gam()`.
+  
+--
+
+- The methods in `mgcv` and `gamm4` estimate smoothing parameters as part of the model, so uncertainty about smoothing is properly propagated into standard errors and `\(p\)`-values.
+
+  - In contrast to knot selection or k-fold cross-validation, where model complexity is treated as fixed when the final model is computed, risking underestimation of uncertainty.
+  
+---
+
+# Theory meets practice
+
+
+
+
+
+&lt;img src="Workshop1_files/figure-html/unnamed-chunk-75-1.png" style="display: block; margin: auto;" /&gt;
+
+&gt; "That dip at x ≈ 0.50 is not real!"
+
+
+---
+
+# Show the uncertainty
+
+&lt;img src="Workshop1_files/figure-html/unnamed-chunk-76-1.png" style="display: block; margin: auto;" /&gt;
+
+- Simultaneous confidence intervals
+
+---
+
+# Show the uncertainty
+
+
+&lt;img src="Workshop1_files/figure-html/unnamed-chunk-77-1.png" style="display: block; margin: auto;" /&gt;
+
+- 100 samples from posterior distribution of f(x)
+
+
+---
+
+class:middle, center
+
+# Almost done
+
+---
+
+# Some references
+
+- **Contains everything, pretty technical**: Wood S. 2017. Generalized Additive Models: An Introduction with R. (https://www.routledge.com/Generalized-Additive-Models-An-Introduction-with-R-Second-Edition/Wood/p/book/9781498728331)
+
+- **Very well written, for applications in ecology**: Pedersen EJ, Miller DL, Simpson GL, Ross N. 2019. Hierarchical generalized additive models in ecology: an introduction with mgcv. PeerJ 7:e6876 https://doi.org/10.7717/peerj.6876
+
+- **Neuroimaging use cases**: Sørensen Ø, Walhovd KB, Fjell AM. 2020. A Recipe for Accurate Estimation of Lifespan Brain Trajectories, Distinguishing Longitudinal and Cohort Effects. Accepted for publication in NeuroImage. https://arxiv.org/abs/2007.13446
+
+---
+
+class: middle, center
+
+# The end
+    </textarea>
+<style data-target="print-only">@media screen {.remark-slide-container{display:block;}.remark-slide-scaler{box-shadow:none;}}</style>
+<script src="https://remarkjs.com/downloads/remark-latest.min.js"></script>
+<script>var slideshow = remark.create({
+"highlightStyle": "github",
+"highlightLines": true,
+"countIncrementalSlides": false,
+"ratio": "16:9"
+});
+if (window.HTMLWidgets) slideshow.on('afterShowSlide', function (slide) {
+  window.dispatchEvent(new Event('resize'));
+});
+(function(d) {
+  var s = d.createElement("style"), r = d.querySelector(".remark-slide-scaler");
+  if (!r) return;
+  s.type = "text/css"; s.innerHTML = "@page {size: " + r.style.width + " " + r.style.height +"; }";
+  d.head.appendChild(s);
+})(document);
+
+(function(d) {
+  var el = d.getElementsByClassName("remark-slides-area");
+  if (!el) return;
+  var slide, slides = slideshow.getSlides(), els = el[0].children;
+  for (var i = 1; i < slides.length; i++) {
+    slide = slides[i];
+    if (slide.properties.continued === "true" || slide.properties.count === "false") {
+      els[i - 1].className += ' has-continuation';
+    }
+  }
+  var s = d.createElement("style");
+  s.type = "text/css"; s.innerHTML = "@media print { .has-continuation { display: none; } }";
+  d.head.appendChild(s);
+})(document);
+// delete the temporary CSS (for displaying all slides initially) when the user
+// starts to view slides
+(function() {
+  var deleted = false;
+  slideshow.on('beforeShowSlide', function(slide) {
+    if (deleted) return;
+    var sheets = document.styleSheets, node;
+    for (var i = 0; i < sheets.length; i++) {
+      node = sheets[i].ownerNode;
+      if (node.dataset["target"] !== "print-only") continue;
+      node.parentNode.removeChild(node);
+    }
+    deleted = true;
+  });
+})();
+(function() {
+  "use strict"
+  // Replace <script> tags in slides area to make them executable
+  var scripts = document.querySelectorAll(
+    '.remark-slides-area .remark-slide-container script'
+  );
+  if (!scripts.length) return;
+  for (var i = 0; i < scripts.length; i++) {
+    var s = document.createElement('script');
+    var code = document.createTextNode(scripts[i].textContent);
+    s.appendChild(code);
+    var scriptAttrs = scripts[i].attributes;
+    for (var j = 0; j < scriptAttrs.length; j++) {
+      s.setAttribute(scriptAttrs[j].name, scriptAttrs[j].value);
+    }
+    scripts[i].parentElement.replaceChild(s, scripts[i]);
+  }
+})();
+(function() {
+  var links = document.getElementsByTagName('a');
+  for (var i = 0; i < links.length; i++) {
+    if (/^(https?:)?\/\//.test(links[i].getAttribute('href'))) {
+      links[i].target = '_blank';
+    }
+  }
+})();
+// adds .remark-code-has-line-highlighted class to <pre> parent elements
+// of code chunks containing highlighted lines with class .remark-code-line-highlighted
+(function(d) {
+  const hlines = d.querySelectorAll('.remark-code-line-highlighted');
+  const preParents = [];
+  const findPreParent = function(line, p = 0) {
+    if (p > 1) return null; // traverse up no further than grandparent
+    const el = line.parentElement;
+    return el.tagName === "PRE" ? el : findPreParent(el, ++p);
+  };
+
+  for (let line of hlines) {
+    let pre = findPreParent(line);
+    if (pre && !preParents.includes(pre)) preParents.push(pre);
+  }
+  preParents.forEach(p => p.classList.add("remark-code-has-line-highlighted"));
+})(document);</script>
+
+<script>
+slideshow._releaseMath = function(el) {
+  var i, text, code, codes = el.getElementsByTagName('code');
+  for (i = 0; i < codes.length;) {
+    code = codes[i];
+    if (code.parentNode.tagName !== 'PRE' && code.childElementCount === 0) {
+      text = code.textContent;
+      if (/^\\\((.|\s)+\\\)$/.test(text) || /^\\\[(.|\s)+\\\]$/.test(text) ||
+          /^\$\$(.|\s)+\$\$$/.test(text) ||
+          /^\\begin\{([^}]+)\}(.|\s)+\\end\{[^}]+\}$/.test(text)) {
+        code.outerHTML = code.innerHTML;  // remove <code></code>
+        continue;
+      }
+    }
+    i++;
+  }
+};
+slideshow._releaseMath(document);
+</script>
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+(function () {
+  var script = document.createElement('script');
+  script.type = 'text/javascript';
+  script.src  = 'https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-MML-AM_CHTML';
+  if (location.protocol !== 'file:' && /^https?:/.test(script.src))
+    script.src  = script.src.replace(/^https?:/, '');
+  document.getElementsByTagName('head')[0].appendChild(script);
+})();
+</script>
+  </body>
+</html>
